@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "ANRO Image Downloader",
+  "version": "1.0.2",
+  "description": "Плагин для автоматического скачивания картинок",
+  "permissions": [
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://anro.ryazan.gov.ru/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://anro.ryazan.gov.ru/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "style.css"
+      ],
+      "all_frames": true,
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
