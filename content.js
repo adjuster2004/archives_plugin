@@ -12,7 +12,7 @@ function initPlugin() {
   panel.innerHTML = `
     <h3>Скачивание картинок</h3>
     <button id="anro-start-btn">Запустить</button>
-    <div id="anro-counter-display">Скачано: <span id="anro-count">0</span></div>
+    <div id="anro-counter-display">Загружено: <span id="anro-count">0</span></div>
     <div class="footer">
       Разработано <a href="https://github.com/adjuster2004" target="_blank" style="color: #007bff; text-decoration: none;">@adjuster2004</a><br>
       2026 v 1.0.9
@@ -207,4 +207,5 @@ if (document.body) {
   initPlugin();
 } else {
   document.addEventListener('DOMContentLoaded', initPlugin);
+
 }
