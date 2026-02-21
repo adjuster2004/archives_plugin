@@ -1,21 +1,35 @@
+// Текущая версия этого файла
+const CURRENT_VERSION = "1.1.0";
+// Ссылка на "сырой" файл настроек на вашем GitHub
+const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
+
+// Словарь названий архивов
+const ARCHIVE_NAMES = {
+  "anro.ryazan.gov.ru": "Рязанский архив"
+};
+
 function initPlugin() {
-  if (document.getElementById('anro-toggle-btn')) return;
+  if (document.getElementById('archive-toggle-btn')) return;
+
+  const currentHost = window.location.hostname;
+  const panelTitle = ARCHIVE_NAMES[currentHost] || "Скачивание картинок";
 
   const toggleBtn = document.createElement('button');
-  toggleBtn.id = 'anro-toggle-btn';
+  toggleBtn.id = 'archive-toggle-btn';
   toggleBtn.innerHTML = '📥'; 
   toggleBtn.title = 'Меню скачивания';
   document.body.appendChild(toggleBtn);
 
   const panel = document.createElement('div');
-  panel.id = 'anro-panel';
+  panel.id = 'archive-panel';
   panel.innerHTML = `
-    <h3>Скачивание картинок</h3>
-    <button id="anro-start-btn">Запустить</button>
-    <div id="anro-counter-display">Загружено: <span id="anro-count">0</span></div>
+    <h3>${panelTitle}</h3>
+    <div id="archive-remote-message" style="display:none; color: #856404; background-color: #fff3cd; padding: 8px; margin-bottom: 10px; border-radius: 4px; font-size: 11px; line-height: 1.3; border: 1px solid #ffeeba;"></div>
+    <button id="archive-start-btn">Запустить</button>
+    <div id="archive-counter-display">Загружено: <span id="archive-count">0</span></div>
     <div class="footer">
       Разработано <a href="https://github.com/adjuster2004" target="_blank" style="color: #007bff; text-decoration: none;">@adjuster2004</a><br>
-      2026 v 1.0.9
+      2026 v ${CURRENT_VERSION} <span id="archive-update-badge" style="display:none;"><br><a href="https://github.com/adjuster2004/archives_plugin" target="_blank" style="color: red; font-weight: bold; text-decoration: none;">🆕 Доступно обновление!</a></span>
     </div>
   `;
   document.body.appendChild(panel);
@@ -24,7 +38,38 @@ function initPlugin() {
     panel.style.display = (panel.style.display === 'block') ? 'none' : 'block';
   });
 
+  fetchUpdateInfo();
   setupLogic();
+}
+
+function fetchUpdateInfo() {
+  fetch(INFO_URL + '?t=' + new Date().getTime())
+    .then(response => response.json())
+    .then(data => {
+      if (data.message && data.message.trim() !== "") {
+        const msgDiv = document.getElementById('archive-remote-message');
+        msgDiv.textContent = data.message;
+        msgDiv.style.display = 'block';
+      }
+      if (data.latest_version && isNewerVersion(data.latest_version, CURRENT_VERSION)) {
+        document.getElementById('archive-update-badge').style.display = 'inline';
+      }
+    })
+    .catch(error => {
+      console.log('Archive Plugin: Не удалось проверить обновления', error);
+    });
+}
+
+function isNewerVersion(latest, current) {
+  const v1 = latest.split('.').map(Number);
+  const v2 = current.split('.').map(Number);
+  for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+    let num1 = v1[i] || 0;
+    let num2 = v2[i] || 0;
+    if (num1 > num2) return true;
+    if (num1 < num2) return false;
+  }
+  return false;
 }
 
 function setupLogic() {
@@ -33,8 +78,8 @@ function setupLogic() {
   let lastDownloadedPath = ""; 
   let waitCycles = 0;
 
-  const startBtn = document.getElementById('anro-start-btn');
-  const countSpan = document.getElementById('anro-count');
+  const startBtn = document.getElementById('archive-start-btn');
+  const countSpan = document.getElementById('archive-count');
 
   startBtn.addEventListener('click', () => {
     if (isDownloading) {
@@ -56,71 +101,118 @@ function setupLogic() {
     processNextPage();
   });
 
-  // Ищем окно "Подождите" снизу вверх
+  function getEffectiveZIndex(element) {
+    let z = 0;
+    let el = element;
+    while (el && el !== document) {
+      if (el.nodeType === 1) { 
+        const style = window.getComputedStyle(el);
+        if (style && style.zIndex && style.zIndex !== 'auto') {
+           let currentZ = parseInt(style.zIndex, 10);
+           if (!isNaN(currentZ) && currentZ > z) {
+             z = currentZ;
+           }
+        }
+      }
+      el = el.parentNode;
+    }
+    return z;
+  }
+
+  function getTopmostElement(elements) {
+    let topEl = null;
+    let maxZ = -1;
+    for (let el of elements) {
+      if (el.offsetWidth === 0 && el.offsetHeight === 0) continue; 
+      let z = getEffectiveZIndex(el);
+      if (z >= maxZ) {
+        maxZ = z;
+        topEl = el;
+      }
+    }
+    return topEl;
+  }
+
   function isLoading() {
-    const dialogs = Array.from(document.querySelectorAll('.ui-dialog, .ui-blockui-content')).reverse();
+    const dialogs = document.querySelectorAll('.ui-dialog, .ui-blockui-content');
+    const validDialogs = [];
     for (let dialog of dialogs) {
       const style = window.getComputedStyle(dialog);
       if (style.display !== 'none' && style.visibility !== 'hidden') {
         if (dialog.innerText && dialog.innerText.toLowerCase().includes('подождите')) {
-          return true;
+          validDialogs.push(dialog);
         }
       }
     }
-    return false;
+    return getTopmostElement(validDialogs) !== null;
   }
 
-  // Ищем лейбл с названием файла СНИЗУ ВВЕРХ (чтобы брать из активного окна)
   function getDocumentLabelText() {
-    const labels = Array.from(document.querySelectorAll('label.ui-outputlabel.ui-widget')).reverse();
+    const labels = document.querySelectorAll('label.ui-outputlabel.ui-widget');
+    const validLabels = [];
     for (let label of labels) {
-      // Проверяем, что лейбл физически виден на экране
-      if (label.offsetWidth > 0 || label.offsetHeight > 0) {
-        const text = label.textContent.trim();
-        if (/\.(jpg|jpeg|png|tif|tiff|pdf)\s*$/i.test(text)) {
-          return text;
-        }
+      const text = label.textContent.trim();
+      if (/\.(jpg|jpeg|png|tif|tiff|pdf)\s*$/i.test(text)) {
+        validLabels.push(label);
       }
     }
+    const topLabel = getTopmostElement(validLabels);
+    if (topLabel) return topLabel.textContent.trim();
     return null;
   }
 
-  // Ищем активную кнопку перелистывания СНИЗУ ВВЕРХ
   function getNextButton() {
-    const btns = Array.from(document.querySelectorAll('a.btn-watermark.btn-right')).reverse();
+    const btns = document.querySelectorAll('a.btn-watermark.btn-right');
+    const validBtns = [];
     for (let btn of btns) {
-      // Проверяем, что кнопка видима и не заблокирована
-      if (btn.offsetWidth > 0 || btn.offsetHeight > 0) {
-        if (btn.style.display !== 'none' && !btn.classList.contains('ui-state-disabled')) {
-          return btn;
-        }
+      if (btn.style.display !== 'none' && !btn.classList.contains('ui-state-disabled')) {
+        validBtns.push(btn);
       }
     }
-    return null;
+    return getTopmostElement(validBtns);
   }
 
   function getLargestBase64Image() {
     let largestImage = null;
     let maxLength = 0;
 
+    function checkAndSet(str) {
+      if (str && str.startsWith('data:image') && str.length > maxLength) {
+        maxLength = str.length;
+        largestImage = str;
+      }
+    }
+
+    function extractBase64(urlStr) {
+      if (!urlStr) return null;
+      let match = urlStr.match(/url\((.*?)\)/i);
+      if (match && match[1]) {
+        let inner = match[1].trim();
+        inner = inner.replace(/^(?:&quot;|['"])+|(?:&quot;|['"])+$/g, '');
+        if (inner.startsWith('data:image')) return inner;
+      }
+      return null;
+    }
+
+    const scanImages = document.querySelectorAll('.scanImage');
+    for (let div of scanImages) {
+      if (div.offsetWidth === 0 && div.offsetHeight === 0) continue; 
+      checkAndSet(extractBase64(window.getComputedStyle(div).backgroundImage));
+      checkAndSet(extractBase64(div.getAttribute('style')));
+    }
+
+    if (largestImage && largestImage.length > 5000) return largestImage;
+
     const allElements = document.querySelectorAll('*');
     for (let el of allElements) {
       for (let attr of el.attributes) {
         if (attr.value && attr.value.trim().startsWith('data:image')) {
-          if (attr.value.length > maxLength) {
-            maxLength = attr.value.length;
-            largestImage = attr.value.trim();
-          }
+          checkAndSet(attr.value.trim());
         }
       }
-      
-      const bgImage = window.getComputedStyle(el).backgroundImage;
-      if (bgImage && bgImage !== 'none' && bgImage.includes('data:image')) {
-        const match = bgImage.match(/url\(['"]?(data:image[^'"\)]+)['"]?\)/);
-        if (match && match[1] && match[1].length > maxLength) {
-          maxLength = match[1].length;
-          largestImage = match[1];
-        }
+      if (el.nodeType === 1) {
+          checkAndSet(extractBase64(window.getComputedStyle(el).backgroundImage));
+          checkAndSet(extractBase64(el.getAttribute('style')));
       }
     }
 
@@ -128,7 +220,7 @@ function setupLogic() {
   }
 
   function finishDownload(message) {
-    alert(message || `Скачивание завершено! Всего скачано файлов: ${downloadedFiles}`);
+    alert(message || `Загрузка завершена! Всего загружено файлов: ${downloadedFiles}`);
     isDownloading = false;
     startBtn.textContent = 'Запустить';
     startBtn.classList.remove('stop');
@@ -143,7 +235,7 @@ function setupLogic() {
     }
 
     let fullText = getDocumentLabelText();
-    let folderName = "anro_downloads"; 
+    let folderName = "archive_downloads"; 
     let fileName = `page_${downloadedFiles + 1}.png`;
 
     if (fullText) {
@@ -191,7 +283,6 @@ function setupLogic() {
       return;
     }
 
-    // Используем нашу новую функцию поиска кнопки
     const nextBtn = getNextButton();
 
     if (nextBtn) {
@@ -207,5 +298,4 @@ if (document.body) {
   initPlugin();
 } else {
   document.addEventListener('DOMContentLoaded', initPlugin);
-
 }
