@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Archive Image Downloader",
-  "version": "1.1.0",
+  "version": "1.1.8",
   "description": "Плагин для автоматического скачивания картинок от @adjuster2004",
   "author": "adjuster2004",
   "homepage_url": "https://github.com/adjuster2004/archives_plugin",
@@ -22,7 +22,8 @@
     "downloads"
   ],
   "host_permissions": [
-    "*://anro.ryazan.gov.ru/*"
+    "*://anro.ryazan.gov.ru/*",
+    "*://vladimir.kaisa.ru/*"
   ],
   "content_scripts": [
     {
@@ -31,6 +32,19 @@
       ],
       "js": [
         "content.js"
+      ],
+      "css": [
+        "style.css"
+      ],
+      "all_frames": true,
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://vladimir.kaisa.ru/*"
+      ],
+      "js": [
+        "vladarch.js"
       ],
       "css": [
         "style.css"
