@@ -1,5 +1,5 @@
 // Текущая версия этого файла
-const CURRENT_VERSION = "1.1.8";
+const CURRENT_VERSION = "1.1.17";
 // Ссылка на "сырой" файл настроек на вашем GitHub
 const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
 
@@ -48,7 +48,7 @@ function fetchUpdateInfo() {
     .then(data => {
       if (data.message && data.message.trim() !== "") {
         const msgDiv = document.getElementById('archive-remote-message');
-        msgDiv.textContent = data.message;
+        msgDiv.innerHTML = data.message;
         msgDiv.style.display = 'block';
       }
       if (data.latest_version && isNewerVersion(data.latest_version, CURRENT_VERSION)) {

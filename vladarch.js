@@ -1,5 +1,5 @@
 // Текущая версия
-const CURRENT_VERSION = "1.1.8";
+const CURRENT_VERSION = "1.1.17";
 const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
 
 function initPlugin() {
@@ -18,9 +18,13 @@ function initPlugin() {
     <div id="archive-remote-message" style="display:none; color: #856404; background-color: #fff3cd; padding: 8px; margin-bottom: 10px; border-radius: 4px; font-size: 11px; line-height: 1.3; border: 1px solid #ffeeba;"></div>
     <button id="archive-start-btn">Запустить</button>
     <div id="archive-counter-display">Загружено: <span id="archive-count">0</span></div>
-    <div class="footer">
-      Разработано <a href="https://github.com/adjuster2004" target="_blank" style="color: #007bff; text-decoration: none;">@adjuster2004</a><br>
-      2026 v ${CURRENT_VERSION} <span id="archive-update-badge" style="display:none;"><br><a href="https://github.com/adjuster2004/archives_plugin" target="_blank" style="color: red; font-weight: bold; text-decoration: none;">🆕 Доступно обновление!</a></span>
+    <div id="archive-plugin-footer" style="margin-top: 15px; font-size: 11px; color: #777; text-align: center; border-top: 1px solid #eee; padding-top: 10px; line-height: 1.4; display: block !important; visibility: visible !important;">
+      Разработано <a href="https://github.com/adjuster2004" target="_blank" style="color: #007bff !important; display: inline !important; visibility: visible !important; text-decoration: none !important;">@adjuster2004</a><br>
+      2026 v ${CURRENT_VERSION} 
+      <span id="archive-update-badge" style="display: none !important; margin-top: 5px;">
+        <br>
+        <a href="https://github.com/adjuster2004/archives_plugin" target="_blank" style="color: red !important; font-weight: bold !important; display: inline !important; visibility: visible !important; text-decoration: none !important;">Доступно обновление!</a>
+      </span>
     </div>
   `;
   document.body.appendChild(panel);
@@ -37,13 +41,15 @@ function fetchUpdateInfo() {
   fetch(INFO_URL + '?t=' + new Date().getTime())
     .then(response => response.json())
     .then(data => {
-      if (data.message && data.message.trim() !== "") {
-        const msgDiv = document.getElementById('archive-remote-message');
-        msgDiv.textContent = data.message;
+      // Пока загрузка не идет, показываем сообщение из GitHub (если оно есть)
+      const msgDiv = document.getElementById('archive-remote-message');
+      if (msgDiv && !msgDiv.getAttribute('data-downloading') && data.message && data.message.trim() !== "") {
+        msgDiv.innerHTML = data.message;
         msgDiv.style.display = 'block';
       }
       if (data.latest_version && data.latest_version !== CURRENT_VERSION) {
-        document.getElementById('archive-update-badge').style.display = 'inline';
+        const badge = document.getElementById('archive-update-badge');
+        if (badge) badge.style.setProperty('display', 'inline', 'important');
       }
     })
     .catch(error => console.log('Archive Plugin: Не удалось проверить обновления', error));
@@ -56,17 +62,42 @@ function setupVladimirLogic() {
   let lastFrameStr = "";
   let waitCycles = 0;
 
+  let isPaused = false;
+  let pauseTimer = null;
+  let pauseTimeLeft = 0;
+  let lastPausedAt = 0;
+
   const startBtn = document.getElementById('archive-start-btn');
   const countSpan = document.getElementById('archive-count');
+  const msgDiv = document.getElementById('archive-remote-message');
 
   startBtn.addEventListener('click', () => {
     if (isDownloading) {
-      stopDownload();
+      if (isPaused) {
+        clearInterval(pauseTimer);
+        isPaused = false;
+        startBtn.textContent = 'Остановить';
+        startBtn.style.backgroundColor = '';
+        startBtn.style.color = '';
+        
+        // При ручном возобновлении возвращаем плашке статус активной загрузки
+        if (msgDiv) {
+          msgDiv.innerHTML = "⚠️ <b>Не закрывайте страницу, пока все листы не будут загружены!</b><br>Загрузка продолжается...";
+        }
+        
+        turnPageToNext(); 
+        setTimeout(processNextPage, 1500);
+      } else {
+        stopDownload();
+      }
       return;
     }
 
+    // НОВЫЙ СТАРТ СИСТЕМЫ
     isDownloading = true;
-    downloadedFiles = 0;
+    isPaused = false;
+    lastPausedAt = 0;
+    downloadedFiles = parseInt(countSpan.textContent) || 0; 
     waitCycles = 0;
     lastImageUrl = "";
     lastFrameStr = "";
@@ -75,14 +106,32 @@ function setupVladimirLogic() {
     startBtn.textContent = 'Остановить';
     startBtn.classList.add('stop');
     
+    // --- ДОБАВЛЕНО ТРЕБУЕМОЕ ПРЕДОХРАНИТЕЛЬНОЕ ПРЕДУПРЕЖДЕНИЕ ---
+    if (msgDiv) {
+      msgDiv.setAttribute('data-downloading', 'true');
+      msgDiv.innerHTML = "⚠️ <b>Не закрывайте страницу, пока все листы не будут загружены!</b><br>Загрузка скоро начнется.";
+      msgDiv.style.display = 'block';
+    }
+    
     processNextPage();
   });
 
   function stopDownload(message) {
     if (message) alert(message);
     isDownloading = false;
+    isPaused = false;
+    if (pauseTimer) clearInterval(pauseTimer);
+    
     startBtn.textContent = 'Запустить';
     startBtn.classList.remove('stop');
+    startBtn.style.backgroundColor = '';
+    startBtn.style.color = '';
+    
+    // Прячем или очищаем плашку предупреждения при полной остановке
+    if (msgDiv) {
+      msgDiv.removeAttribute('data-downloading');
+      msgDiv.style.display = 'none';
+    }
   }
 
   function getViewerImage() {
@@ -121,31 +170,45 @@ function setupVladimirLogic() {
     return null;
   }
 
-  function getSmartFileName(currentFrameStr) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const objectId = urlParams.get('objectId') || 'unknown_doc';
-    let folderName = `vladimir_doc_${objectId}`;
-    
-    let baseName = "";
+  function getTotalFrames() {
+    const input = getArchivePageInput();
+    if (input) {
+       const container = input.closest('span') || input.parentElement.parentElement;
+       if (container) {
+           const text = container.textContent || "";
+           const match = text.match(/из\s*(\d+)/i);
+           if (match && match[1]) {
+               return match[1];
+           }
+       }
+    }
+    return null;
+  }
 
+  function getBaseNameFromDOM() {
     const elements = document.querySelectorAll('div, span');
     for (let el of elements) {
       if (el.childElementCount === 0) {
         let text = el.textContent.trim();
         if (text.length > 3 && text.length < 60 && /\.(jpg|jpeg|png|tif|tiff)$/i.test(text)) {
           if (el.offsetWidth > 0 && el.offsetHeight > 0) {
-            baseName = text.replace(/[<>:"/\\|?*]/g, '_');
-            break;
+            return text.replace(/[<>:"/\\|?*]/g, '_');
           }
         }
       }
     }
+    return null;
+  }
 
-    if (!baseName) {
-      baseName = currentFrameStr ? `${currentFrameStr}.jpg` : `page_${downloadedFiles + 1}.jpg`;
-    }
-
-    return `${folderName}/${baseName}`;
+  function getSmartFileName(currentFrameStr) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const objectId = urlParams.get('objectId') || 'unknown_doc';
+    let folderName = `vladimir_doc_${objectId}`;
+    
+    let frameNumber = currentFrameStr ? String(currentFrameStr).padStart(4, '0') : String(downloadedFiles + 1).padStart(4, '0');
+    let finalBaseName = getBaseNameFromDOM() || `page.jpg`;
+    
+    return `${folderName}/${frameNumber}_${finalBaseName}`;
   }
 
   function simulateRealClick(element) {
@@ -212,20 +275,20 @@ function setupVladimirLogic() {
   function processNextPage() {
     if (!isDownloading) return;
 
-    // --- ПРЕДОХРАНИТЕЛЬ: ПРОВЕРКА НА ОКОНЧАНИЕ ПОДПИСКИ ---
-    const pageText = document.body.innerText || "";
-    if (pageText.includes("Срок действия абонемента закончен")) {
-        stopDownload("🛑 Внимание: Срок действия абонемента закончен!\nСкачивание принудительно остановлено, чтобы не качать пустые файлы.");
-        return;
+    const pageHTML = document.body.innerHTML || "";
+    if (pageHTML.includes("Срок действия абонемента закончен") || pageHTML.includes("продлите абонемент")) {
+        stopDownload("🛑 Внимание: Срок действия абонемента закончен!\nСкачивание принудительно остановлено.");
+        return; 
     }
 
     const imgSrc = getViewerImage();
     const currentFrameStr = getCurrentFrame();
+    const totalFramesStr = getTotalFrames();
 
     if (!imgSrc || imgSrc === lastImageUrl || currentFrameStr === lastFrameStr) {
       waitCycles++;
       if (waitCycles > 30) {
-        stopDownload("Таймаут: страница не перелистывается.\nВозможно, достигнут конец дела.");
+        stopDownload("🤔 Таймаут: страница не перелистывается.\nВозможно, достигнут конец дела или завис интернет.");
         return;
       }
       setTimeout(processNextPage, 500);
@@ -242,7 +305,7 @@ function setupVladimirLogic() {
       });
     } catch (error) {
       if (error.message.includes("Extension context invalidated")) {
-        stopDownload("Внимание: Плагин был обновлен. Нажмите F5 на клавиатуре.");
+        stopDownload("🤔 Внимание: Плагин был обновлен. Нажмите F5 на клавиатуре.");
         return;
       }
     }
@@ -253,8 +316,56 @@ function setupVladimirLogic() {
     countSpan.textContent = downloadedFiles;
     waitCycles = 0; 
 
+    if (currentFrameStr && totalFramesStr && parseInt(currentFrameStr, 10) >= parseInt(totalFramesStr, 10)) {
+        stopDownload(`✅ Загрузка успешно завершена!\nСкачана последняя страница (${currentFrameStr} из ${totalFramesStr}).\nВсего файлов: ${downloadedFiles}`);
+        return; 
+    }
+
+    // БЛОК ОХЛАЖДЕНИЯ (ПАУЗА КАЖДЫЕ 500 ЛИСТОВ)
+    if (downloadedFiles > 0 && downloadedFiles % 500 === 0 && lastPausedAt !== downloadedFiles) {
+        lastPausedAt = downloadedFiles;
+        isPaused = true;
+        pauseTimeLeft = 120; 
+        
+        startBtn.textContent = `Пауза: ${pauseTimeLeft}с (▶ Пуск)`;
+        startBtn.style.backgroundColor = '#ffc107'; 
+        startBtn.style.color = '#000';
+
+        // Во время паузы обновляем плашку, напоминая о важности не закрывать вкладку
+        if (msgDiv) {
+          msgDiv.innerHTML = "⏳ <b>Техническая пауза на 2 минуты для разгрузки Chrome.</b><br>Пожалуйста, не закрывайте вкладку!";
+        }
+
+        pauseTimer = setInterval(() => {
+            if (!isDownloading) {
+                clearInterval(pauseTimer);
+                return;
+            }
+            
+            pauseTimeLeft--;
+            
+            if (pauseTimeLeft <= 0) {
+                clearInterval(pauseTimer);
+                isPaused = false;
+                startBtn.textContent = 'Остановить';
+                startBtn.style.backgroundColor = '';
+                startBtn.style.color = '';
+                
+                if (msgDiv) {
+                  msgDiv.innerHTML = "⚠️ <b>Не закрывайте страницу, пока все листы не будут загружены!</b><br>Загрузка продолжается...";
+                }
+                
+                turnPageToNext();
+                setTimeout(processNextPage, 1500);
+            } else {
+                startBtn.textContent = `Пауза: ${pauseTimeLeft}с (▶ Пуск)`;
+            }
+        }, 1000);
+
+        return; 
+    }
+
     turnPageToNext();
-    
     setTimeout(processNextPage, 1500); 
   }
 }
