@@ -8,7 +8,8 @@ Plugin for Archives
 - Поддержка Владимиского архива vladimir.kaisa.ru. Начиная с версии 2.0 абсолютно иной подход!!!
 
 ## Владимирский архив
-## Нужно оплатить и открыть главную страницу дела, например, https://vladimir.kaisa.ru/private/office/documents?oid=123456789
+## Нужно оплатить и открыть главную страницу дела, например, 
+https://vladimir.kaisa.ru/private/office/documents?oid=123456789
 
 <img width="221" height="318" alt="image" src="https://github.com/user-attachments/assets/cb5a7870-92e3-40a9-b730-ad7ebee5e612" />
 
