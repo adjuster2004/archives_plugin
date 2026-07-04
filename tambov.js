@@ -1,4 +1,4 @@
-// Текущая версия плагина: 2.7.0 (Имя папки: Фонд - Опись - Дело)
+// Текущая версия плагина для Тамбовского архива (на базе владимирской 2.6.0)
 const CURRENT_VERSION = "2.7.0"; 
 const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
 
@@ -14,7 +14,7 @@ function initPlugin() {
   const panel = document.createElement('div');
   panel.id = 'archive-panel';
   panel.innerHTML = `
-    <h3>Владимирский архив</h3>
+    <h3>Тамбовский архив</h3>
     <div id="archive-remote-message" style="display:none; color: #856404; background-color: #fff3cd; padding: 8px; margin-bottom: 10px; border-radius: 4px; font-size: 11px; line-height: 1.3; border: 1px solid #ffeeba;"></div>
     
     <div style="display: flex; gap: 10px; margin-bottom: 12px;">
@@ -45,7 +45,7 @@ function initPlugin() {
   });
 
   fetchUpdateInfo();
-  setupVladimirLogic();
+  setupTambovLogic();
 }
 
 function fetchUpdateInfo() {
@@ -61,7 +61,7 @@ function fetchUpdateInfo() {
     .catch(error => console.log('Archive Plugin: Не удалось проверить обновления', error));
 }
 
-function setupVladimirLogic() {
+function setupTambovLogic() {
   let isDownloading = false;
   let downloadedCount = 0;
 
@@ -72,7 +72,6 @@ function setupVladimirLogic() {
   const startSerialInput = document.getElementById('archive-start-serial');
   const sizeInput = document.getElementById('archive-image-size');
 
-  // Функция для парсинга таблицы и сбора метаданных дела
   function extractMetadata() {
     let meta = { fond: "", opis: "", delo: "", pages: "", dates: "" };
     const rows = document.querySelectorAll('table.table-bordered tbody tr');
@@ -117,7 +116,6 @@ function setupVladimirLogic() {
     }
   }
 
-  // Передаем folderName внутрь функции загрузки
   async function downloadLoop(objId, attrId, startSerial, imgSize, folderName) {
     let serial = startSerial; 
 
@@ -143,7 +141,8 @@ function setupVladimirLogic() {
         }
       }
 
-      let url = `https://vladimir.kaisa.ru/getImage?objectId=${objId}&attributeId=${attrId}&serial=${serial}&size=${imgSize}&refresh=true&ext=jpg`;
+      // Изменен URL на Тамбовский архив
+      let url = `https://kaisa.tambovarchiv.ru/getImage?objectId=${objId}&attributeId=${attrId}&serial=${serial}&size=${imgSize}&refresh=true&ext=jpg`;
       let fileName = `${folderName}/${objId}_${String(serial).padStart(4, '0')}.jpg`;
 
       try {
@@ -212,12 +211,11 @@ function setupVladimirLogic() {
   }
 
   startBtn.addEventListener('click', () => {
-	// === ЗАЩИТА ОТ ПОТЕРИ КОНТЕКСТА ПРИ ОБНОВЛЕНИИ ПЛАГИНА ===
     if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
         alert("🔄 Плагин был обновлен или перезапущен!\nПожалуйста, обновите эту страницу (клавиша F5), чтобы продолжить скачивание.");
         return;
     }
-    // ========================================================
+
     if (isDownloading) {
       stopDownload("Загрузка остановлена пользователем.");
       return;
@@ -256,7 +254,6 @@ function setupVladimirLogic() {
       }
       sizeInput.value = imgSize; 
 
-      // === ПОЛУЧАЕМ МЕТАДАННЫЕ И ФОРМИРУЕМ НАЗВАНИЕ ПАПКИ ===
       const meta = extractMetadata();
       let folderName = `${meta.fond} - ${meta.opis} - ${meta.delo}`;
       
@@ -271,7 +268,6 @@ function setupVladimirLogic() {
         url: txtUrl,
         filename: txtFileName
       });
-      // ====================================================
 
       isDownloading = true;
       startSerialInput.disabled = true;
@@ -290,7 +286,6 @@ function setupVladimirLogic() {
         msgDiv.style.display = 'block';
       }
 
-      // Передаем переменную folderName в функцию скачивания
       downloadLoop(objId, attrId, startSerial, imgSize, folderName);
 
     } catch (e) {

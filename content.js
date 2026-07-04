@@ -1,5 +1,5 @@
 // Текущая версия этого файла
-const CURRENT_VERSION = "2.6.0";
+const CURRENT_VERSION = "2.7.0";
 // Ссылка на "сырой" файл настроек на вашем GitHub
 const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
 
