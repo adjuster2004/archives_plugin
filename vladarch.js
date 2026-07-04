@@ -213,6 +213,12 @@ function setupVladimirLogic() {
   }
 
   startBtn.addEventListener('click', () => {
+	// === ЗАЩИТА ОТ ПОТЕРИ КОНТЕКСТА ПРИ ОБНОВЛЕНИИ ПЛАГИНА ===
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+        alert("🔄 Плагин был обновлен или перезапущен!\nПожалуйста, обновите эту страницу (клавиша F5), чтобы продолжить скачивание.");
+        return;
+    }
+    // ========================================================
     if (isDownloading) {
       stopDownload("Загрузка остановлена пользователем.");
       return;
