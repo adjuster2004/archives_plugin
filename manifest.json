@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Archive Image Downloader",
-  "version": "1.1.17",
+  "version": "2.6.0",
   "description": "Плагин для автоматического скачивания картинок от @adjuster2004",
   "author": "adjuster2004",
   "homepage_url": "https://github.com/adjuster2004/archives_plugin",

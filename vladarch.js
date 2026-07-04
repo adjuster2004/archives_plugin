@@ -1,5 +1,5 @@
-// Текущая версия плагина с выбором страницы и размера картинки
-const CURRENT_VERSION = "2.2.0"; 
+// Текущая версия плагина: 2.6.0 (Добавлен парсинг метаданных и генерация TXT файла)
+const CURRENT_VERSION = "2.6.0"; 
 const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
 
 function initPlugin() {
@@ -23,13 +23,16 @@ function initPlugin() {
         <input type="number" id="archive-start-serial" value="1" min="1" style="width: 100%; padding: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
       </div>
       <div style="flex: 1;">
-        <label for="archive-image-size" style="font-size: 11px; display: block; margin-bottom: 4px; font-weight: bold; color: #333;">Размер (5-20):</label>
+        <label for="archive-image-size" title="Чем больше размер, тем больше разрешение картинок, но и тяжелее файлы. Оптимально: 10" style="font-size: 11px; display: block; margin-bottom: 4px; font-weight: bold; color: #333; cursor: help; border-bottom: 1px dotted #ccc; width: max-content;">Размер <span style="color: #007bff; font-weight: normal;">(?)</span>:</label>
         <input type="number" id="archive-image-size" value="10" min="5" max="20" style="width: 100%; padding: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
       </div>
     </div>
 
     <button id="archive-start-btn">Запустить</button>
     <div id="archive-counter-display">Загружено: <span id="archive-count">0</span></div>
+    
+    <div id="archive-absolute-display" style="text-align: center; font-size: 13px; color: #555; margin-top: 5px;">Текущий лист: <span id="archive-absolute-count" style="font-weight: bold;">-</span></div>
+
     <div id="archive-plugin-footer" style="margin-top: 15px; font-size: 11px; color: #777; text-align: center; border-top: 1px solid #eee; padding-top: 10px; line-height: 1.4; display: block !important; visibility: visible !important;">
       Разработано <a href="https://github.com/adjuster2004" target="_blank" style="color: #007bff !important; display: inline !important; visibility: visible !important; text-decoration: none !important;">@adjuster2004</a><br>
       2026 v ${CURRENT_VERSION} 
@@ -64,9 +67,41 @@ function setupVladimirLogic() {
 
   const startBtn = document.getElementById('archive-start-btn');
   const countSpan = document.getElementById('archive-count');
+  const absoluteSpan = document.getElementById('archive-absolute-count'); 
   const msgDiv = document.getElementById('archive-remote-message');
   const startSerialInput = document.getElementById('archive-start-serial');
   const sizeInput = document.getElementById('archive-image-size');
+
+  // Функция для парсинга таблицы и сбора метаданных дела
+  function extractMetadata() {
+    let meta = { fond: "", opis: "", delo: "", pages: "", dates: "" };
+    const rows = document.querySelectorAll('table.table-bordered tbody tr');
+    
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 2) {
+            const label = cells[0].textContent.trim();
+            const value = cells[1].textContent.trim();
+            
+            if (label === 'Номер фонда') meta.fond = value;
+            else if (label === 'Номер описи') meta.opis = value;
+            else if (label === 'Номер дела') meta.delo = value;
+            else if (label === 'Количество листов') meta.pages = value;
+            else if (label === 'Хронологические рамки') meta.dates = value;
+        }
+    });
+    
+    // Функция для очистки строк от спецсимволов, которые запрещены в именах файлов
+    const safe = (str) => str.replace(/[<>:"/\\|?*\n\r]/g, '_').trim();
+    
+    return {
+        fond: safe(meta.fond) || "Неизвестно",
+        opis: safe(meta.opis) || "Неизвестно",
+        delo: safe(meta.delo) || "Неизвестно",
+        pages: safe(meta.pages) || "Неизвестно",
+        dates: safe(meta.dates) || "Неизвестно"
+    };
+  }
 
   function stopDownload(message) {
     if (message) alert(message);
@@ -75,7 +110,6 @@ function setupVladimirLogic() {
     startBtn.classList.remove('stop');
     startBtn.style.backgroundColor = '';
     
-    // Разблокируем поля ввода
     if (startSerialInput) startSerialInput.disabled = false;
     if (sizeInput) sizeInput.disabled = false;
     
@@ -89,9 +123,28 @@ function setupVladimirLogic() {
     let folderName = `vladimir_doc_${objId}`;
 
     while (isDownloading) {
-      // Формируем прямую ссылку с использованием динамического размера (imgSize)
+      if (downloadedCount > 0 && downloadedCount % 500 === 0) {
+        console.log(`Скачано ${downloadedCount} файлов. Уходим на паузу 60 секунд...`);
+        if (msgDiv) {
+          msgDiv.innerHTML = `☕ <b>Перерыв!</b><br>Скачано ${downloadedCount} листов. Ждем 60 секунд перед продолжением...`;
+          msgDiv.style.backgroundColor = '#d1ecf1'; 
+          msgDiv.style.borderColor = '#bee5eb';
+          msgDiv.style.color = '#0c5460';
+        }
+        
+        await new Promise(r => setTimeout(r, 60000)); 
+        
+        if (!isDownloading) break; 
+        
+        if (msgDiv) {
+          msgDiv.innerHTML = `⚡ <b>Прямая загрузка продолжается!</b><br>Скачиваем дело <b>${objId}</b>.`;
+          msgDiv.style.backgroundColor = '#fff3cd';
+          msgDiv.style.borderColor = '#ffeeba';
+          msgDiv.style.color = '#856404';
+        }
+      }
+
       let url = `https://vladimir.kaisa.ru/getImage?objectId=${objId}&attributeId=${attrId}&serial=${serial}&size=${imgSize}&refresh=true&ext=jpg`;
-      
       let fileName = `${folderName}/${objId}_${String(serial).padStart(4, '0')}.jpg`;
 
       try {
@@ -101,28 +154,36 @@ function setupVladimirLogic() {
         if (!contentType.includes("image")) {
           console.log(`Загрузка завершена. Сервер вернул не картинку на serial=${serial}`);
           stopDownload(`✅ Загрузка успешно завершена!\nВсего скачано за сессию: ${downloadedCount}`);
+          
+          if (window.lastObjectUrl) {
+              URL.revokeObjectURL(window.lastObjectUrl);
+          }
           break;
         }
 
         let blob = await response.blob();
-        let reader = new FileReader();
-        let base64data = await new Promise((resolve) => {
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
+        let objectUrl = URL.createObjectURL(blob);
 
-        // Отправляем данные в background.js
         chrome.runtime.sendMessage({
           action: 'download',
-          url: base64data,
+          url: objectUrl,
           filename: fileName
         });
 
+        if (window.lastObjectUrl) {
+            URL.revokeObjectURL(window.lastObjectUrl);
+        }
+        window.lastObjectUrl = objectUrl;
+
         downloadedCount++;
         countSpan.textContent = downloadedCount;
+        
+        if (absoluteSpan) {
+          absoluteSpan.textContent = serial; 
+        }
+        
         serial++; 
 
-        // Рандомная пауза от 1.5 до 3 секунд
         let delay = Math.floor(Math.random() * 20) + 100;
         await new Promise(r => setTimeout(r, delay));
 
@@ -130,12 +191,20 @@ function setupVladimirLogic() {
         console.error("Сбой сети при загрузке:", err);
         if (msgDiv) {
           msgDiv.innerHTML = "⏳ <b>Произошел сбой сети.</b> Ждем 10 секунд перед повторной попыткой...";
+          msgDiv.style.backgroundColor = '#f8d7da'; 
+          msgDiv.style.borderColor = '#f5c6cb';
+          msgDiv.style.color = '#721c24';
           msgDiv.style.display = 'block';
         }
         await new Promise(r => setTimeout(r, 10000));
         
         if (isDownloading) {
-          if (msgDiv) msgDiv.style.display = 'none';
+          if (msgDiv) {
+             msgDiv.style.backgroundColor = '#fff3cd';
+             msgDiv.style.borderColor = '#ffeeba';
+             msgDiv.style.color = '#856404';
+             msgDiv.innerHTML = `⚡ <b>Прямая загрузка продолжается!</b><br>Скачиваем дело <b>${objId}</b>.`;
+          }
           continue; 
         }
         break;
@@ -168,37 +237,54 @@ function setupVladimirLogic() {
         return;
       }
 
-      // Валидация стартового листа
       let startSerial = parseInt(startSerialInput.value, 10);
       if (isNaN(startSerial) || startSerial < 1) {
         startSerial = 1;
         startSerialInput.value = 1;
       }
 
-      // Валидация размера картинки (от 5 до 20)
       let imgSize = parseInt(sizeInput.value, 10);
       if (isNaN(imgSize) || imgSize < 5) {
         imgSize = 5;
       } else if (imgSize > 20) {
         imgSize = 20;
       }
-      sizeInput.value = imgSize; // Возвращаем в интерфейс исправленное значение
+      sizeInput.value = imgSize; 
 
-      // Блокируем интерфейс
+      // === ФОРМИРУЕМ И СКАЧИВАЕМ TXT ФАЙЛ С ИНФОРМАЦИЕЙ ===
+      let folderName = `vladimir_doc_${objId}`;
+      const meta = extractMetadata();
+      
+      const txtContent = `Ссылка на дело: ${window.location.href}`;
+      const txtBlob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+      const txtUrl = URL.createObjectURL(txtBlob);
+      
+      const txtFileName = `${folderName}/${meta.fond} - ${meta.opis} - ${meta.delo} - ${meta.pages} - ${meta.dates}.txt`;
+
+      chrome.runtime.sendMessage({
+        action: 'download',
+        url: txtUrl,
+        filename: txtFileName
+      });
+      // ====================================================
+
       isDownloading = true;
       startSerialInput.disabled = true;
       sizeInput.disabled = true;
       downloadedCount = 0;
       countSpan.textContent = downloadedCount;
+      if (absoluteSpan) absoluteSpan.textContent = '-'; 
       startBtn.textContent = 'Остановить';
       startBtn.classList.add('stop');
 
       if (msgDiv) {
         msgDiv.innerHTML = `⚡ <b>Прямая загрузка активирована!</b><br>Скачиваем дело <b>${objId}</b> начиная с листа <b>${startSerial}</b> (Качество: <b>${imgSize}</b>).`;
+        msgDiv.style.backgroundColor = '#fff3cd'; 
+        msgDiv.style.borderColor = '#ffeeba';
+        msgDiv.style.color = '#856404';
         msgDiv.style.display = 'block';
       }
 
-      // Запускаем цикл
       downloadLoop(objId, attrId, startSerial, imgSize);
 
     } catch (e) {
