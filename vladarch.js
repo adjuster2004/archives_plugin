@@ -1,4 +1,4 @@
-// Текущая версия плагина: 2.6.0 (Добавлен парсинг метаданных и генерация TXT файла)
+// Текущая версия плагина: 2.6.0 (Имя папки: Фонд - Опись - Дело)
 const CURRENT_VERSION = "2.6.0"; 
 const INFO_URL = "https://raw.githubusercontent.com/adjuster2004/archives_plugin/main/info.json";
 
@@ -91,7 +91,6 @@ function setupVladimirLogic() {
         }
     });
     
-    // Функция для очистки строк от спецсимволов, которые запрещены в именах файлов
     const safe = (str) => str.replace(/[<>:"/\\|?*\n\r]/g, '_').trim();
     
     return {
@@ -118,9 +117,9 @@ function setupVladimirLogic() {
     }
   }
 
-  async function downloadLoop(objId, attrId, startSerial, imgSize) {
+  // Передаем folderName внутрь функции загрузки
+  async function downloadLoop(objId, attrId, startSerial, imgSize, folderName) {
     let serial = startSerial; 
-    let folderName = `vladimir_doc_${objId}`;
 
     while (isDownloading) {
       if (downloadedCount > 0 && downloadedCount % 500 === 0) {
@@ -257,9 +256,9 @@ function setupVladimirLogic() {
       }
       sizeInput.value = imgSize; 
 
-      // === ФОРМИРУЕМ И СКАЧИВАЕМ TXT ФАЙЛ С ИНФОРМАЦИЕЙ ===
-      let folderName = `vladimir_doc_${objId}`;
+      // === ПОЛУЧАЕМ МЕТАДАННЫЕ И ФОРМИРУЕМ НАЗВАНИЕ ПАПКИ ===
       const meta = extractMetadata();
+      let folderName = `${meta.fond} - ${meta.opis} - ${meta.delo}`;
       
       const txtContent = `Ссылка на дело: ${window.location.href}`;
       const txtBlob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
@@ -291,7 +290,8 @@ function setupVladimirLogic() {
         msgDiv.style.display = 'block';
       }
 
-      downloadLoop(objId, attrId, startSerial, imgSize);
+      // Передаем переменную folderName в функцию скачивания
+      downloadLoop(objId, attrId, startSerial, imgSize, folderName);
 
     } catch (e) {
       console.error("Ошибка при парсинге параметров старта:", e);
